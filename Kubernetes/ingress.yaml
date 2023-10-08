@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: buildkitd
+  labels:
+    app.kubernetes.io/name: buildkitd
+    app.kubernetes.io/creator: hossein-yousefi
+    app.kubernetes.io/stack: build-docker-image    
+spec:
+  ingressClassName: haproxy
+  rules:
+  - host: buildkitd.mypc.local
+    http:
+      paths:
+      - pathType: Prefix
+        path: "/"
+        backend:
+          service:
+            name: buildkitd
+            port:
+              number: 1234

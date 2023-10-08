@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: buildkitd
+    app.kubernetes.io/creator: hossein-yousefi
+    app.kubernetes.io/stack: build-docker-image
+  name: buildkitd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: buildkitd
+      app.kubernetes.io/creator: hossein-yousefi
+      app.kubernetes.io/stack: build-docker-image
+        
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: buildkitd
+        app.kubernetes.io/creator: hossein-yousefi
+        app.kubernetes.io/stack: build-docker-image
+          
+      annotations:
+        container.apparmor.security.beta.kubernetes.io/buildkitd: unconfined
+    # see buildkit/docs/rootless.md for caveats of rootless mode
+    spec:
+      imagePullSecrets:
+        - name: registry-creds
+      containers:
+        - name: buildkitd
+          image: core.mypc.local/library/buildkit-image:1.0.0
+          args:
+            - --addr
+            - unix:///run/user/1000/buildkit/buildkitd.sock
+            - --addr
+            - tcp://0.0.0.0:1234
+            - --tlscacert
+            - /certs/daemon/ca.pem
+            - --tlscert
+            - /certs/daemon/cert.pem
+            - --tlskey
+            - /certs/daemon/key.pem
+            - --config
+            - /etc/buildkit/buildkit.toml
+            - --oci-worker-no-process-sandbox
+          # the probe below will only work after Release v0.6.3
+          readinessProbe:
+            exec:
+              command:
+                - buildctl
+                - debug
+                - workers
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          # the probe below will only work after Release v0.6.3
+          livenessProbe:
+            exec:
+              command:
+                - buildctl
+                - debug
+                - workers
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          securityContext:
+            # Needs Kubernetes >= 1.19
+            seccompProfile:
+              type: Unconfined
+            # To change UID/GID, you need to rebuild the image
+            runAsUser: 1000
+            runAsGroup: 1000
+
+          ports:
+            - containerPort: 1234
+
+          envFrom:
+            - configMapRef:
+                name: build-config          
+
+          volumeMounts:
+            - name: registry-creds
+              readOnly: true
+              mountPath: /home/user/.docker
+
+            - name: buildkitd-dir
+              mountPath: /var/lib/buildkit
+
+            - name: buildkitd-config
+              mountPath: /etc/buildkit/
+
+      volumes:
+        - name: registry-creds
+          secret:
+            secretName: registry-creds
+            items:
+              - key: config.json
+                path: config.json
+
+        - name: buildkitd-dir
+          emptyDir: {}
+
+        - name: buildkitd-config
+          configMap:
+            name: buildkitd-config
+
